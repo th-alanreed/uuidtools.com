@@ -2,28 +2,15 @@
 
 namespace App\Providers;
 
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
-use Illuminate\Support\Facades\Schema;
 
 class AppServiceProvider extends ServiceProvider
 {
-	/**
-	 * Register any application services.
-	 *
-	 * @return void
-	 */
-	public function register()
-	{
-		Schema::defaultStringLength(191);
-	}
-
-	/**
-	 * Bootstrap any application services.
-	 *
-	 * @return void
-	 */
-	public function boot()
-	{
-		//
-	}
+    public function boot(): void
+    {
+        RateLimiter::for('api', fn (Request $request) => Limit::perMinute(config('uuidtools.api_rate_limit'))->by($request->ip()));
+    }
 }

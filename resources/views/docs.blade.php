@@ -1,268 +1,112 @@
-{{-- ============================================================================== --}}
-{{-- ==                                 Config                                   == --}}
-{{-- ============================================================================== --}}
+@extends('layouts.app')
+@section('title', 'UUID Generator API: Free JSON & Plain-Text UUID/GUID API')
+@section('description', 'Free UUID and GUID generator API. No key needed. Generate v1, v3, v4, v5, v6, v7, v8, nil and max UUIDs as JSON or plain text, in bulk, and decode or validate any UUID.')
+@section('canonical', url('/docs'))
 
-@extends('layouts.master')
+@php $base = rtrim(config('app.url'), '/'); @endphp
 
-@section('seo-meta')
-	<!-- Page-specific meta tags -->
-	<title>UUID Generator API | {{ config('app.name') }}</title>
-	<meta name="description" content="Free UUID/GUID Generator API. Create single or bulk UUIDs. UUID v1, v3, v4, and v5. "/>
-
-	<link rel="canonical" href="https://www.uuidtools.com/docs" />
-@endsection
-
-{{-- ============================================================================== --}}
-{{-- ==                                Page Content                              == --}}
-{{-- ============================================================================== --}}
 @section('content')
+<section class="hero">
+    <h1>UUID Generator API</h1>
+    <p class="lead">Free, no authentication, CORS enabled. JSON by default, plain text on request. {{ config('uuidtools.api_rate_limit') }} requests per minute per IP.</p>
+</section>
 
-	<div class="container mt-4">
+<div class="content-grid">
+<article class="prose">
+    <h2 id="quickstart">Quick start</h2>
+<pre>curl {{ $base }}/api/generate/v4
+curl {{ $base }}/api/generate/v7?count=5&amp;format=text
+curl {{ $base }}/api/decode/b01eb720-171a-11ea-b949-73c91bba743d</pre>
+    <p>All endpoints accept <code>GET</code> only. Generation endpoints return a JSON array of strings by default. Add <code>?format=text</code> (or send <code>Accept: text/plain</code>) to get one UUID per line, ready for shell scripts.</p>
 
-		@component('components.breadcrumbs')
-			<li class="breadcrumb-item active" aria-current="page">API Documentation</li>
-		@endcomponent
+    <h2 id="generate">Generate</h2>
+    <p><code>GET /api/generate/{version}</code> where <code>version</code> is one of <code>v1 v2 v4 v6 v7 v8 nil max timestamp-first</code>. (<code>v3</code> and <code>v5</code> are <a href="#name-based">name-based</a>.)</p>
+    <table class="data">
+        <thead><tr><th>Parameter</th><th>Default</th><th>Description</th></tr></thead>
+        <tbody>
+            <tr><td><code>count</code></td><td>1</td><td>1 to {{ number_format(config('uuidtools.max_count')) }}. Also available as a path: <code>/api/generate/v4/count/10</code>. Ignored for nil and max.</td></tr>
+            <tr><td><code>format</code></td><td>json</td><td><code>json</code> or <code>text</code>.</td></tr>
+            <tr><td><code>upper</code></td><td>0</td><td><code>1</code> for uppercase.</td></tr>
+            <tr><td><code>hyphens</code></td><td>1</td><td><code>0</code> removes the hyphens.</td></tr>
+            <tr><td><code>braces</code></td><td>0</td><td><code>1</code> wraps in <code>{}</code> (Microsoft GUID registry style).</td></tr>
+            <tr><td><code>urn</code></td><td>0</td><td><code>1</code> prefixes <code>urn:uuid:</code>.</td></tr>
+            <tr><td><code>quotes</code></td><td>none</td><td><code>double</code> or <code>single</code>.</td></tr>
+            <tr><td><code>separator</code></td><td>newline</td><td>Text format only: <code>newline</code>, <code>comma</code>, <code>comma-space</code>, <code>space</code>.</td></tr>
+        </tbody>
+    </table>
+    <h3>Examples</h3>
+<pre># 3 random UUIDs
+curl "{{ $base }}/api/generate/v4?count=3"
+# A GUID, Microsoft style
+curl "{{ $base }}/api/generate/v4?upper=1&amp;braces=1&amp;format=text"
+# 10 time-ordered UUIDs as a quoted, comma-separated list
+curl "{{ $base }}/api/generate/v7?count=10&amp;format=text&amp;quotes=single&amp;separator=comma-space"</pre>
+    <p>Every UUID version is documented on its own generator page: <a href="/generate/v4">v4</a>, <a href="/generate/v7">v7</a>, <a href="/generate/v1">v1</a>, <a href="/generate/v6">v6</a>, <a href="/generate/v8">v8</a>, <a href="/generate/nil">nil</a>, <a href="/generate/max">max</a>.</p>
+    <p><strong>Privacy:</strong> v1, v2 and v6 UUIDs use a random node ID with the multicast bit set, never our server's MAC address.</p>
 
-		<h1 class="border-bottom border-primary border-3 font-weight-bold"><i class="fas fa-fingerprint text-primary"></i> API Documentation <span class="text-muted small">Free UUID Generator API</span></h1>
+    <h2 id="name-based">Name-based UUIDs (v3 and v5)</h2>
+    <p>The same namespace and name always return the same UUID, so <code>count</code> does not apply.</p>
+<pre>{{ $base }}/api/generate/v5?namespace=ns:dns&amp;name=example.com
+{{ $base }}/api/generate/v3/namespace/ns:url/name/https://www.example.com/</pre>
+    <ul>
+        <li><code>namespace</code>: a UUID, or <code>ns:DNS</code>, <code>ns:URL</code>, <code>ns:OID</code>, <code>ns:X500</code> (case-insensitive).</li>
+        <li><code>name</code>: any text. <strong>The name is hashed as UTF-8 bytes</strong>, the same as Python, Java, Go and .NET (<code>Encoding.UTF8</code>). The same input produces the same UUID in all of them.</li>
+        <li>Prefix the name with <code>base64:</code> to send it base64-encoded. Use this for names containing <code>/ ? # %</code> or non-ASCII text. Standard and URL-safe base64 are both accepted.</li>
+    </ul>
+<pre>{{ $base }}/api/generate/v5?namespace=ns:dns&amp;name=base64:RnJhbsOnYWlz</pre>
+    <p>The example above is the UTF-8 encoding of <code>Français</code>. Earlier versions of this site hashed non-ASCII names using Latin-1 or failed on characters outside it (<a href="{{ config('uuidtools.github_url') }}/issues/55">issue #55</a>); that is fixed.</p>
 
-		<div class="row my-4">
-			<div class="col-md-8 order-12 order-md-1">
-				<a href="#" name=intro></a>
-				<p>
-					Welcome to our super simple UUID API.
-					This API allows you to create UUIDs and GUIDs quickly on-the-fly for testing purposes.
-					<b>No authentication is required.</b>
-				</p>
-				<p>
-					We support generating all major UUID versions including <u>version-1, version-3, version-4, version-5 and "timestamp-first" UUIDs</u>.
-					Read more about <a href="/uuid-versions-explained">different UUID versions</a>.
-					No authentication is required. This is the same API that powers our <a href="/generate">UUID generator</a>.
-				</p>
-				<p>
-					Endpoints that accept a count argument allow you to create up to 100 UUIDs at once.
-					All endpoints are limited to 60 requests per minute per IP address.
-				</p>
-
-				<hr>
-
-				<a href="#" name=version-1></a>
-				<h3 class="mt-5 font-weight-bold">Version-1 UUID API</h3>
-
-				<p>
-					Version-1 UUIDs are based on time, the computer generating the UUID (in this case, it's our server), and pseudo-randomness.
-				</p>
-
-				<p>
-					<code><pre>https://www.uuidtools.com/api/generate/v1</pre></code>
-				</p>
-				<p>
-					<code><pre>https://www.uuidtools.com/api/generate/v1/count/10</pre></code>
-				</p>
-
-				<hr>
-				<a href="#" name=version-2></a>
-				<h3 class="mt-5 font-weight-bold">Version-2 UUID API</h3>
-				<p>
-					We do not provide a version-2 UUID generator. Learn more about the <a href="/uuid-versions-explained">different UUID versions</a>.
-				</p>
-
-				<hr>
-				<a href="#" name=version-3></a>
-				<h3 class="mt-5 font-weight-bold">Version-3 UUID API</h3>
-				<p>
-					Version-3 UUIDs are deterministic and are based on an MD5 hash of the namespace place name you supply.
-					If you provide the same input you will get the same output every time.
-					This API does not allow you to generate multiple UUIDs at once because they would all be the same.
-				</p>
-				<p>Namespace must be "ns:url", "ns:dns", "ns:OID", "ns:X500" or a properly formatted UUID. Name is a string of any length.</p>
-				<p>
-					<code><pre>https://www.uuidtools.com/api/generate/v3/namespace/ns:url/name/https://www.google.com/</pre></code>
-				</p>
-				<p>
-					<code><pre>https://www.uuidtools.com/api/generate/v3/namespace/b01eb720-171a-11ea-b949-73c91bba743d/name/anything-goes-here</pre></code>
-				</p>
-				<p>
-					You can also <a href="https://www.base64encode.org/" target=_blank>base64 encode</a> your "name" parameter.
-					This avoids some problems related to URL encoding certain characters.
-					(Thank you to those who reported this issue on <a href="https://github.com/aarreedd/uuidtools.com/issues/30" target=_blank>Github</a>)
-				</p>
-				<p>
-					<code><pre>https://www.uuidtools.com/api/generate/v3/namespace/ns:url/name/base64:aHR0cHM6Ly9pZC5icmFzaWwuaW8vY29tcGFueS92MS8wNzcyNTIxNS8=</pre></code>
-				</p>
-
-				<hr>
-				<a href="#" name=version-4></a>
-				<h3 class="mt-5 font-weight-bold">Version-4 UUID API</h3>
-				<p>
-					Version-4 UUIDs are similar to version-1. Both are randomly generated. Version-1 is based, in part, on the time while version-4 is not.
-				</p>
-				<p>
-					<code><pre>https://www.uuidtools.com/api/generate/v4</pre></code>
-				</p>
-				<p>
-					<code><pre>https://www.uuidtools.com/api/generate/v4/count/10</pre></code>
-				</p>
-
-				<hr>
-				<a href="#" name=version-5></a>
-				<h3 class="mt-5 font-weight-bold">Version-5 UUID API</h3>
-
-				<p>
-					Version-5 UUIDs are similar to version-3. Both versions are deterministic based on a namespace and name.
-					The main differences is SHA-1 algorithm is used instead of MD5.
-				</p>
-				<p>Namespace must be "ns:url", "ns:dns", "ns:OID", "ns:X500" or a properly formatted UUID. Name is a string of any length.</p>
-
-				<p>
-					<code><pre>https://www.uuidtools.com/api/generate/v5/namespace/ns:url/name/https://www.uuidtools.com/generate</pre></code>
-				</p>
-				<p>
-					<code><pre>https://www.uuidtools.com/api/generate/v5/namespace/b01eb720-171a-11ea-b949-73c91bba743d/name/anything-goes-here</pre></code>
-				</p>
-
-				<p>
-					You can also <a href="https://www.base64encode.org/" target=_blank>base64 encode</a> your "name" parameter.
-					This avoids some problems related to URL encoding certain characters.
-					(Thank you to those who reported this issue on <a href="https://github.com/aarreedd/uuidtools.com/issues/30" target=_blank>Github</a>)
-				</p>
-				<p>
-					<code><pre>https://www.uuidtools.com/api/generate/v5/namespace/ns:url/name/base64:aHR0cHM6Ly9pZC5icmFzaWwuaW8vY29tcGFueS92MS8wNzcyNTIxNS8=</pre></code>
-				</p>
-
-				<hr>
-				<a href="#" name=timestamp-first></a>
-				<h3 class="mt-5 font-weight-bold">Timestamp-first UUID API</h3>
-				<p>
-					Timestamp-first (also, called "timestamp-first" or "ordered UUIDs") are similar to version-1 and version-4 UUIDs.
-					These UUIDs have the current timestamp embedded in them to insure uniqueness.
-					What is special about Timestamp-first UUIDs is that timestamp is at the beginning of the UUID so when stored in a database they will appear in the order they were created.
-					This can be useful for many purposes and also is more efficient for storing in indexed database columns.
-				</p>
-
-				<p>
-					<code><pre>https://www.uuidtools.com/api/generate/timestamp-first</pre></code>
-				</p>
-				<p>
-					<code><pre>https://www.uuidtools.com/api/generate/timestamp-first/count/10</pre></code>
-				</p>
-
-				<hr>
-				<a href="#" name=decode></a>
-				<h3 class="mt-5 font-weight-bold">Decode UUID API</h3>
-				<p>
-					This fun API endpoint will tell you what version a specific UUID is.
-				</p>
-				<p>
-					<code><pre>https://www.uuidtools.com/api/decode/b01eb720-171a-11ea-b949-73c91bba743d</pre></code>
-				</p>
-				<h4>Response</h4>
-				<p>
-				<div class="card bg-light mb-5">
-					<code>
-<pre class="mb-0">
-{
-    encode: {
-        STR: "b01eb720-171a-11ea-b949-73c91bba743d",
-        SIV: "234103610387309579079392911688732406845"
-    },
-    decode: {
-        variant: "DCE 1.1, ISO/IEC 11578:1996",
-        version: "1 (time and node based)",
-        content: {
-            time: "2019-12-05 04:49:57.961296.0 UTC",
-            clock: "14665 (usually random)",
-            node: "73:c9:1b:ba:74:3d (local multicast)"
-        }
-    }
+    <h2 id="decode">Decode and validate</h2>
+    <p><code>GET /api/decode/{uuid}</code> returns everything encoded in a UUID. It accepts hyphenated, bare 32-digit, <code>{braces}</code> and <code>urn:uuid:</code> forms in any case, and never errors on a well-formed UUID, including nil, max, unknown versions and legacy variants. Invalid input returns HTTP 400.</p>
+<pre>{{ $base }}/api/decode/b01eb720-171a-11ea-b949-73c91bba743d</pre>
+<pre>{
+  "valid": true,
+  "uuid": "b01eb720-171a-11ea-b949-73c91bba743d",
+  "version": 1,
+  "version_name": "Gregorian time-based",
+  "variant": "RFC 9562 (formerly RFC 4122 / DCE 1.1)",
+  "variant_bits": "10",
+  "is_nil": false,
+  "is_max": false,
+  "time": {
+    "iso8601": "2019-12-05T04:49:57.9612960Z",
+    "unix_seconds": 1575521397,
+    "precision": "Exact to 100 nanoseconds"
+  },
+  "clock_sequence": 14665,
+  "node": { "mac": "73:c9:1b:ba:74:3d", "multicast_bit": true },
+  "sortable_by_time": false,
+  "formats": { "standard": "...", "uppercase": "...", "braces": "...", "urn": "...", "hex": "...", "base64": "...", "integer": "..." },
+  "fields": [ { "name": "time_low", "hex": "b01eb720", "description": "..." } ],
+  "notes": [ "..." ]
 }</pre>
-					</code>
-				</div>
-				</p>
+    <p>The <code>time</code> object is present for versions 1, 2, 6 and 7. The legacy <code>encode</code> and <code>decode</code> objects from the previous API are still included for backward compatibility.</p>
+    <p><code>GET /api/validate/{uuid}</code> is a lightweight check that always returns HTTP 200: <code>{"valid": true, "version": 4, ...}</code> or <code>{"valid": false}</code>.</p>
 
+    <h2 id="errors">Errors and limits</h2>
+    <ul>
+        <li><code>400</code> invalid parameters, with <code>{"message": "...", "errors": {"field": ["..."]}}</code>.</li>
+        <li><code>404</code> unknown version.</li>
+        <li><code>429</code> more than {{ config('uuidtools.api_rate_limit') }} requests per minute from one IP. Check the <code>Retry-After</code> header. Need many UUIDs? Ask for up to {{ number_format(config('uuidtools.max_count')) }} per request, or generate locally with your language's UUID library.</li>
+    </ul>
 
-				<hr>
-				<a href="#" name=cors></a>
-				<h3 class="mt-5 font-weight-bold">CORS Support</h3>
+    <h2 id="cors">CORS</h2>
+    <p>The API sends <code>Access-Control-Allow-Origin: *</code>, so you can call it from any website. If you use it, please link back to us.</p>
+<pre>const [uuid] = await (await fetch('{{ $base }}/api/generate/v7')).json();</pre>
+</article>
 
-				<p>
-					The API now supports <a href="https://en.wikipedia.org/wiki/Cross-origin_resource_sharing" target=_blank>CORS (Cross-origin resource sharing)</a>.
-					This means you can use this API on your own website.
-				</p>
-				<p>
-					<b>If you use our API on your website please link back to our site.</b>
-				</p>
-				<p>
-					Here is an example of how to use this API with jQuery.
-				</p>
-				<p>
-				<div class="card bg-light">
-					<code>
-<pre class="mb-0">
-&lt;html&gt;
-    &lt;body&gt;
-        ...
-    &lt;/body&gt;
-    &lt;script src=&quot;https://code.jquery.com/jquery-3.4.1.min.js&quot;&gt;&lt;/script&gt;
-    &lt;script&gt;
-        $.ajax({
-            url: &quot;https://www.uuidtools.com/api/generate/v1&quot;,
-            success: function(data) {
-                // UUID Received!
-                console.log(data[0])
-            },
-            error: function(jqXHR, textStatus, errorThrown) {
-                // Something when wrong.
-                // You may have exceeded the rate limit (60 requests per minute).
-                console.log(jqXHR, textStatus, errorThrown);
-            }
-        });
-    &lt;/script&gt;
-&lt;/html&gt;
-</pre>
-					</code>
-				</div>
-				</p>
-
-
-			</div>
-			<div class="col-md-4 order-6">
-				<div class="card bg-light mb-3">
-					<div class="card-body">
-						<h4 class="font-italic">Table of Contents</h4>
-						<ul>
-							<li><a href="#intro">Introduction</a>
-							<li><a href="#version-1">Version-1 UUID API</a>
-							<li><a href="#version-2">Version-2 UUID API</a>
-							<li><a href="#version-3">Version-3 UUID API</a>
-							<li><a href="#version-4">Version-4 UUID API</a>
-							<li><a href="#version-5">Version-5 UUID API</a>
-							<li><a href="#timestamp-first">Timestamp-first UUID API</a>
-							<li><a href="#decode">Decode UUID API</a>
-							<li><a href="#cors">CORS Support</a>
-						</ul>
-					</div>
-				</div>
-			</div>
-		</div>
-
-	</div>
+<aside class="side">
+    <div class="card">
+        <h3>On this page</h3>
+        <ul class="plain">
+            <li><a href="#quickstart">Quick start</a></li>
+            <li><a href="#generate">Generate</a></li>
+            <li><a href="#name-based">Name-based (v3, v5)</a></li>
+            <li><a href="#decode">Decode &amp; validate</a></li>
+            <li><a href="#errors">Errors &amp; limits</a></li>
+            <li><a href="#cors">CORS</a></li>
+        </ul>
+    </div>
+</aside>
+</div>
 @endsection
-
-
-{{-- ============================================================================== --}}
-{{-- ==                               Page Scripts                               == --}}
-{{-- ============================================================================== --}}
-@push('scripts')
-	<script type="application/ld+json">
-	{
-		"@context": "https://schema.org",
-		"@type": "BreadcrumbList",
-		"itemListElement": [{
-			"@type": "ListItem",
-			"position": 1,
-			"name": "API Documentation",
-			"item": "https://www.uuidtools.com/docs"
-		}]
-	}
-	</script>
-@endpush

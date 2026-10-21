@@ -1,53 +1,22 @@
 <?php
 
-/*
-|--------------------------------------------------------------------------
-| Web Routes
-|--------------------------------------------------------------------------
-|
-| Here is where you can register web routes for your application. These
-| routes are loaded by the RouteServiceProvider within a group which
-| contains the "web" middleware group. Now create something great!
-|
-*/
+use App\Http\Controllers\PageController;
+use Illuminate\Support\Facades\Route;
 
-Route::get('/',                   'GeneratorController@home');
-Route::get('/generate',           'GeneratorController@index');
-Route::get('/generate/bulk',      'GeneratorController@bulk');
-Route::get('/generate/{version}', 'GeneratorController@showGenerator');
+Route::get('/', [PageController::class, 'home'])->name('home');
+Route::get('/generate', fn () => redirect('/', 301));
+Route::get('/generate/{slug}', [PageController::class, 'generate'])->name('generate');
+Route::get('/decode/{uuid?}', [PageController::class, 'decode'])->name('decode');
 
-// Alternate URLs
-Route::get('v1', 'GeneratorController@showV1');
-Route::get('v3', 'GeneratorController@showV2');
-Route::get('v3', 'GeneratorController@showV3');
-Route::get('v4', 'GeneratorController@showV4');
-Route::get('v5', 'GeneratorController@showV5');
-Route::get('timestamp-first', 'GeneratorController@showTimestampFirst');
-Route::get('minecraft', 'GeneratorController@showMinecraft');
+Route::view('/docs', 'docs')->name('docs');
+Route::view('/what-is-uuid', 'what-is-uuid')->name('what-is-uuid');
+Route::view('/uuid-versions-explained', 'versions-explained')->name('versions-explained');
+Route::view('/terms', 'terms')->name('terms');
+Route::view('/contact', 'contact')->name('contact');
+Route::get('/sitemap', [PageController::class, 'sitemap']);
+Route::get('/sitemap.xml', [PageController::class, 'sitemapXml']);
 
-
-Route::get('/generator/{anything?}', function($anything = null) {
-	return redirect('/generate/' . $anything);
-});
-
-Route::get('/decode', 'GeneratorController@decode');
-
-Route::get('/uuid-versions-explained', function() {
-	return view('uuid-versions-explained');
-});
-
-Route::get('/what-is-uuid', function() {
-	return view('what-is-uuid');
-});
-
-Route::get('/terms', function() {
-	return view('terms');
-});
-
-Route::get('/docs', function() {
-	return view('docs');
-});
-
-Route::get('/sitemap', 'SitemapController@index');
-
-Route::get('/contact', 'ContactController@show');
+// Legacy URLs from the previous version of the site.
+Route::get('/generator/{anything?}', fn (?string $anything = null) => redirect('/generate'.($anything ? '/'.$anything : ''), 301));
+Route::get('/{slug}', fn (string $slug) => redirect('/generate/'.$slug, 301))
+    ->whereIn('slug', ['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'timestamp-first', 'minecraft']);

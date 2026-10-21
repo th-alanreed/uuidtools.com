@@ -1,46 +1,9 @@
-{{-- ============================================================================== --}}
-{{-- ==                                 Config                                   == --}}
-{{-- ============================================================================== --}}
-
-@extends('layouts.master')
-
-@section('seo-meta')
-	<!-- Page-specific meta tags -->
-	<title>404 Not Found | {{ config('app.name') }}</title>
-@endsection
-
-{{-- ============================================================================== --}}
-{{-- ==                                Page Content                              == --}}
-{{-- ============================================================================== --}}
+@extends('layouts.app')
+@section('title', 'Page not found')
 @section('content')
-
-	<section class="jumbotron text-center">
-		<div class="container">
-			<h1 class="jumbotron-heading">404 - Page Not Found</h1>
-		</div>
-	</section>
-
-	<div class="container mt-4 text-center">
-
-		<br>
-		<br>
-		<h4 class="font-italic">Oops! We could not find the page you were looking for.</h4>
-		<br>
-		<br>
-
-		<p class="lead">
-			Please double-check the URL you typed for errors.
-			If you clicked a broken link, please <a href="/contact">contact us</a> so we can fix in.
-		</p>
-		<p class="lead">
-			You can try visiting the <a href="/">homepage</a> to find what you were looking for.
-		</p>
-		<br>
-		<br>
-		<br>
-		<p class="small">Here is a UUID for your troubles: {{ Str::uuid() }}</p>
-		<br>
-
-	</div>
-
+    <section class="hero">
+        <h1>404: that page does not exist</h1>
+        <p class="lead">Here is a UUID for your trouble: <code>{{ \Ramsey\Uuid\Uuid::uuid7()->toString() }}</code></p>
+        <p><a class="btn" href="/">Go to the UUID generator</a></p>
+    </section>
 @endsection

@@ -2,230 +2,156 @@
 
 namespace App\Http\Controllers;
 
-use Str;
-use Cache;
+use App\Uuid\UuidFormatter;
+use App\Uuid\UuidGenerator;
+use App\Uuid\UuidInspector;
+use App\Uuid\UuidVersion;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\Rule;
-use App\Rules\UuidNamespace;
-
-use Ramsey\Uuid\Uuid;
+use Illuminate\Http\Response;
+use InvalidArgumentException;
 
 class ApiController extends Controller
 {
-	function version1($count = 1)
-	{
-		$validator = Validator::make(compact('count'), [
-			'count' => 'numeric|between:1,100',
-		]);
+    public function __construct(
+        private readonly UuidGenerator $generator,
+        private readonly UuidInspector $inspector,
+    ) {}
 
-		if ($validator->fails())
-		{
-			return response()->json(['errors' => $validator->errors()], 400);
-		}
+    /**
+     * GET /api/generate/{version}[/count/{count}]?count=&namespace=&name=&format=&upper=…
+     */
+    public function generate(Request $request, string $version, ?string $count = null): Response|JsonResponse
+    {
+        $uuidVersion = UuidVersion::tryFrom(strtolower($version));
 
-		$output = [];
-		for ($i = 0; $i < $count; $i++)
-		{
-			$output[] = (string) Uuid::uuid1();
-		}
+        if ($uuidVersion === null) {
+            return $this->error('version', 'Unknown version. Use one of: '.implode(', ', array_column(UuidVersion::cases(), 'value')).'.', 404);
+        }
 
-		Cache::increment('total-uuids', $count);
+        if ($uuidVersion->isNameBased()) {
+            return $this->nameBased($request, $uuidVersion, $request->query('namespace'), $request->query('name'));
+        }
 
-		return $output;
-	}
+        $count ??= $request->query('count', '1');
+        $max = config('uuidtools.max_count');
 
-	function version2($count = 1)
-	{
-		$validator = Validator::make(compact('count'), [
-			'count' => 'numeric|between:1,100',
-		]);
+        if (! is_string($count) || ! ctype_digit($count) || (int) $count < 1 || (int) $count > $max) {
+            return $this->error('count', "The count must be a whole number between 1 and {$max}.");
+        }
 
-		if ($validator->fails())
-		{
-			return response()->json(['errors' => $validator->errors()], 400);
-		}
+        return $this->respond($request, $this->generator->generate($uuidVersion, (int) $count));
+    }
 
-		$output = [];
-		for ($i = 0; $i < $count; $i++)
-		{
-			$output[] = (string) Uuid::uuid2(Uuid::DCE_DOMAIN_PERSON);
-		}
+    /**
+     * GET /api/generate/{v3|v5}/namespace/{namespace}/name/{name}
+     *
+     * A name prefixed with "base64:" is base64-decoded first (issue #30), which lets
+     * clients send any bytes, e.g. UTF-8 text containing "/" or "?".
+     */
+    public function nameBasedPath(Request $request, string $version, string $namespace, string $name): Response|JsonResponse
+    {
+        $uuidVersion = UuidVersion::tryFrom(strtolower($version));
 
-		Cache::increment('total-uuids', $count);
+        if ($uuidVersion === null || ! $uuidVersion->isNameBased()) {
+            return $this->error('version', 'Only v3 and v5 UUIDs take a namespace and name.', 404);
+        }
 
-		return $output;
-	}
+        return $this->nameBased($request, $uuidVersion, $namespace, $name);
+    }
 
-	function version3($namespace, $name)
-	{
-		$namespace = strtolower($namespace);
+    /**
+     * GET /api/decode/{uuid}
+     */
+    public function decode(string $uuid): JsonResponse
+    {
+        $result = $this->inspector->inspect($uuid);
 
-		$validator = Validator::make(compact('namespace', 'name'), [
-			'namespace' => ['required', new UuidNamespace],
-			'name' => 'required'
-		]);
+        if ($result === null) {
+            return response()->json([
+                'valid' => false,
+                'message' => 'The value is not a valid UUID.',
+                'errors' => ['uuid' => ['The value is not a valid UUID. Expected 32 hex digits, optionally hyphenated (8-4-4-4-12), in braces, or prefixed with urn:uuid:.']],
+            ], 400);
+        }
 
-		if ($validator->fails())
-		{
-			return response()->json(['errors' => $validator->errors()], 400);
-		}
+        return response()->json($result);
+    }
 
-		$name = $this->base64Decode($name);
+    /**
+     * GET /api/validate/{uuid} - always 200, with a boolean "valid".
+     */
+    public function validate(string $uuid): JsonResponse
+    {
+        $result = $this->inspector->inspect($uuid);
 
-		// Get predefined namespace
-		if ($namespace == "ns:dns") {
-			$namespace = Uuid::NAMESPACE_DNS;
-		} elseif ($namespace == "ns:url") {
-			$namespace = Uuid::NAMESPACE_URL;
-		} elseif ($namespace == "ns:x500") {
-			$namespace = Uuid::NAMESPACE_X500;
-		} elseif ($namespace == "ns:oid") {
-			$namespace = Uuid::NAMESPACE_OID;
-		}
+        return response()->json($result === null ? ['valid' => false] : [
+            'valid' => true,
+            'uuid' => $result['uuid'],
+            'version' => $result['version'],
+            'variant' => $result['variant'],
+            'is_rfc9562' => $result['variant_bits'] === '10' || $result['is_nil'] || $result['is_max'],
+        ]);
+    }
 
-		Cache::increment('total-uuids');
+    private function nameBased(Request $request, UuidVersion $version, mixed $namespace, mixed $name): Response|JsonResponse
+    {
+        if (! is_string($namespace) || $namespace === '') {
+            return $this->error('namespace', 'A namespace is required: a UUID or one of ns:DNS, ns:URL, ns:OID, ns:X500.');
+        }
 
-		return [(string) Uuid::uuid3($namespace, $name)];
-	}
+        if (! is_string($name) || $name === '') {
+            return $this->error('name', 'A name is required.');
+        }
 
-	function version4($count = 1)
-	{
-		$validator = Validator::make(compact('count'), [
-			'count' => 'numeric|between:1,100',
-		]);
+        if (str_starts_with(strtolower($name), 'base64:')) {
+            $decoded = base64_decode(strtr(substr($name, 7), '-_ ', '+/+'), true);
 
-		if ($validator->fails())
-		{
-			return response()->json(['errors' => $validator->errors()], 400);
-		}
+            if ($decoded === false) {
+                return $this->error('name', 'The base64-encoded name is not valid base64.');
+            }
 
-		$output = [];
-		for ($i = 0; $i < $count; $i++)
-		{
-			$output[] = (string) Uuid::uuid4();
-		}
+            $name = $decoded;
+        }
 
-		Cache::increment('total-uuids', $count);
+        try {
+            $uuid = $this->generator->nameBased($version, $namespace, $name);
+        } catch (InvalidArgumentException $e) {
+            return $this->error('namespace', $e->getMessage());
+        }
 
-		return $output;
-	}
+        return $this->respond($request, [$uuid]);
+    }
 
-	function version5($namespace, $name)
-	{
-		$namespace = strtolower($namespace);
+    /**
+     * @param  list<string>  $uuids
+     */
+    private function respond(Request $request, array $uuids): Response|JsonResponse
+    {
+        $formatter = UuidFormatter::fromArray($request->query());
 
-		$validator = Validator::make(compact('namespace', 'name'), [
-			'namespace' => ['required', new UuidNamespace],
-			'name' => 'required'
-		]);
+        if ($this->wantsText($request)) {
+            return response($formatter->join($uuids)."\n", 200, ['Content-Type' => 'text/plain; charset=utf-8']);
+        }
 
-		if ($validator->fails())
-		{
-			return response()->json(['errors' => $validator->errors()], 400);
-		}
+        return response()->json($formatter->formatAll($uuids));
+    }
 
-		$name = $this->base64Decode($name);
+    private function wantsText(Request $request): bool
+    {
+        $format = strtolower((string) $request->query('format', ''));
 
-		// Get predefined namespace
-		if ($namespace == "ns:dns") {
-			$namespace = Uuid::NAMESPACE_DNS;
-		} elseif ($namespace == "ns:url") {
-			$namespace = Uuid::NAMESPACE_URL;
-		} elseif ($namespace == "ns:x500") {
-			$namespace = Uuid::NAMESPACE_X500;
-		} elseif ($namespace == "ns:oid") {
-			$namespace = Uuid::NAMESPACE_OID;
-		}
+        if ($format !== '') {
+            return in_array($format, ['text', 'txt', 'plain'], true);
+        }
 
-		Cache::increment('total-uuids');
+        $accept = (string) $request->header('Accept', '');
 
-		return [(string) Uuid::uuid5($namespace, $name)];
-	}
+        return str_contains($accept, 'text/plain') && ! str_contains($accept, 'application/json');
+    }
 
-	function timestampFirst($count = 1)
-	{
-		$validator = Validator::make(compact('count'), [
-			'count' => 'numeric|between:1,100',
-		]);
-
-		if ($validator->fails())
-		{
-			return response()->json(['errors' => $validator->errors()], 400);
-		}
-
-		$output = [];
-		for ($i = 0; $i < $count; $i++)
-		{
-			$output[] = Str::orderedUuid();
-		}
-
-		Cache::increment('total-uuids', $count);
-
-		return $output;
-	}
-
-	function decode($uuid)
-	{
-		$validator = Validator::make(compact('uuid'), [
-			'uuid' => 'required|uuid',
-		]);
-
-		if ($validator->fails())
-		{
-			return response()->json(['errors' => $validator->errors()], 400);
-		}
-
-		ob_start();
-		passthru("uuid -d ".escapeshellarg($uuid));
-		$output = trim(ob_get_clean());
-
-		$json = $this->parseUuidDecodeResults($output);
-
-		return $json;
-	}
-
-	private function parseUuidDecodeResults($input)
-	{
-		$rows = explode("\n", $input);
-
-		$output = [];
-		$output['encode'] = [];
-		$output['encode']['STR'] = substr($rows[0], 17);
-		$output['encode']['SIV'] = substr($rows[1], 17);
-
-		$output['decode'] = [];
-		$output['decode']['variant'] = substr($rows[2], 17);
-		$output['decode']['version'] = substr($rows[3], 17);
-
-		if (Str::contains($rows[4], 'time:'))
-		{
-			$output['decode']['contents'] = [];
-			$output['decode']['contents']['time'] = substr($rows[4], 24);
-			$output['decode']['contents']['clock'] = substr($rows[5], 24);
-			$output['decode']['contents']['node'] = substr($rows[6], 24);
-		}
-		else
-		{
-			$output['decode']['contents'] = substr($rows[4], 17) . "\n" . substr($rows[5], 17);
-		}
-
-		return $output;
-	}
-
-	/**
-	 * If string starts with "base64:" then
-	 * treat it as a base 64 string and decode it.
-	 * This is a solution to https://github.com/aarreedd/uuidtools.com/issues/30
-	 */
-	private function base64Decode($name)
-	{
-		if (Str::startsWith(strtolower($name), 'base64:'))
-		{
-			$name = explode(':', $name, 2)[1];
-			$name = base64_decode($name);
-		}
-
-		return $name;
-	}
+    private function error(string $field, string $message, int $status = 400): JsonResponse
+    {
+        return response()->json(['message' => $message, 'errors' => [$field => [$message]]], $status);
+    }
 }

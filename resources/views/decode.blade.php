@@ -1,233 +1,147 @@
-{{-- ============================================================================== --}}
-{{-- ==                                 Config                                   == --}}
-{{-- ============================================================================== --}}
+@extends('layouts.app')
 
-@extends('layouts.master')
+@section('title', 'UUID Validator & Decoder: Version, Variant, Timestamp')
+@section('description', 'Validate and decode any UUID or GUID. See its version (v1 to v8), variant, embedded timestamp, node, clock sequence and every common format. Works for nil, max and Microsoft GUIDs.')
+@section('canonical', url('/decode'))
 
-@section('seo-meta')
-	<!-- Page-specific meta tags -->
-	<title>UUID Decoder | {{ config('app.name') }}</title>
-	<meta name="description" content="UUID Decoder. Enter a UUID to see version information, and more."/>
-
-	<link rel="canonical" href="https://www.uuidtools.com/decode" />
-@endsection
-
-{{-- ============================================================================== --}}
-{{-- ==                                Page Content                              == --}}
-{{-- ============================================================================== --}}
 @section('content')
+<section class="hero">
+    <h1>UUID Validator &amp; Decoder</h1>
+    <p class="lead">Paste a UUID or GUID to check it and see what is inside: version, variant, timestamp and more.</p>
+</section>
 
-	<div class="container mt-4">
+<section class="card">
+    <form method="get" action="/decode" class="decode-form">
+        <label for="uuid">UUID / GUID</label>
+        <div class="row">
+            <input type="text" id="uuid" name="uuid" value="{{ $input }}" placeholder="{{ $sampleUuid }}" spellcheck="false" autocomplete="off" autofocus>
+            <button class="btn primary" type="submit">Decode</button>
+        </div>
+        <p class="hint">Accepts hyphenated, 32 hex digits, <code>{braces}</code>, <code>urn:uuid:</code>, any case. <a href="/decode?uuid={{ $sampleUuid }}">Try a fresh v7</a>.</p>
+    </form>
+</section>
 
-		<h1 class="border-bottom border-primary border-3 mb-0 font-weight-bold">
-			<i class="fas fa-fingerprint text-primary"></i>
-			UUID Decoder
-		</h1>
+@if ($input !== '' && $result === null)
+    <section class="card result invalid" role="alert">
+        <h2><span class="badge bad">Invalid</span> Not a valid UUID</h2>
+        <p>A UUID has 32 hexadecimal digits (0-9, a-f), usually written in groups of 8-4-4-4-12 separated by hyphens: <code>123e4567-e89b-12d3-a456-426614174000</code>.</p>
+        <p class="muted">You entered {{ strlen($input) }} character{{ strlen($input) === 1 ? '' : 's' }}: <code>{{ \Illuminate\Support\Str::limit($input, 80) }}</code></p>
+    </section>
+@elseif ($result)
+    <section class="card result">
+        <h2><span class="badge good">Valid</span> <code>{{ $result['uuid'] }}</code>
+            <button class="btn small" data-copy="{{ $result['uuid'] }}" type="button">Copy</button></h2>
+        <div class="badges">
+            @if ($result['is_nil'])
+                <span class="badge">Nil UUID</span>
+            @elseif ($result['is_max'])
+                <span class="badge">Max UUID</span>
+            @elseif ($result['version'] !== null)
+                <span class="badge">Version {{ $result['version'] }}</span>
+            @endif
+            <span class="badge">{{ $result['version_name'] }}</span>
+            @if ($result['sortable_by_time'])<span class="badge">Sortable by time</span>@endif
+        </div>
 
-		<div class="card mb-0 bg-light">
-			<div class="card-body text-center">
+        @if ($result['fields'])
+            <div class="segments" aria-label="UUID structure">
+                @foreach ($result['fields'] as $field)
+                    <div class="segment" style="flex: {{ max(strlen($field['hex']), 3) }}" title="{{ $field['description'] }}">
+                        <code>{{ $field['hex'] }}</code>
+                        <small>{{ $field['name'] }}</small>
+                    </div>
+                @endforeach
+            </div>
+        @endif
 
-				<form id="decode-form">
-					<div class="form-group">
-						<label for="uuid" class="mt-2 font-weight-bold">Enter UUID to Decode:</label>
-						<input type="text" required autocomplete="off" pattern="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}" class="form-control form-control-lg text-center" id="uuid" aria-describedby="uuidHelp" placeholder="Enter UUID">
-						<small id="uuidHelp" class="form-text text-muted">UUIDs are in the format 00000000-0000-0000-0000-000000000000. <a href="#" id="autofill">Autofill with random UUID <i class="fas fa-random"></i></a></small>
-					</div>
-					<button class="btn btn-primary btn-lg" type="submit" id="decode-submit"> Decode UUID <i class="fas fa-key"></i> </button>
-				</form>
+        <table class="kv">
+            <tbody>
+                <tr><th>Version</th><td>{{ $result['version'] ?? 'n/a' }} <span class="muted">{{ $result['version_name'] }}</span></td></tr>
+                <tr><th>Variant</th><td>{{ $result['variant'] }} <span class="muted">(bits <code>{{ $result['variant_bits'] }}</code>)</span></td></tr>
+                @if ($result['time'])
+                    <tr><th>Timestamp (UTC)</th><td><code>{{ $result['time']['iso8601'] }}</code> <button class="btn small" data-copy="{{ $result['time']['iso8601'] }}" type="button">Copy</button><br><span class="muted">Unix: {{ $result['time']['unix_ms'] ?? $result['time']['unix_seconds'] }}{{ isset($result['time']['unix_ms']) ? ' ms' : ' s' }}. {{ $result['time']['precision'] }}.</span></td></tr>
+                @endif
+                @if ($result['clock_sequence'] !== null)
+                    <tr><th>Clock sequence</th><td>{{ $result['clock_sequence'] }}</td></tr>
+                @endif
+                @if ($result['node'])
+                    <tr><th>Node</th><td><code>{{ $result['node']['mac'] }}</code> <span class="muted">{{ $result['node']['source'] }}</span></td></tr>
+                @endif
+                @isset($result['local_domain'])
+                    <tr><th>Local domain</th><td>{{ $result['local_domain']['name'] }} ({{ $result['local_domain']['value'] }})</td></tr>
+                    <tr><th>Local identifier</th><td>{{ $result['local_identifier'] }}</td></tr>
+                @endisset
+            </tbody>
+        </table>
 
-				<input id="api-copy-input" type="text" style="position:absolute; top: -9999px; z-index: -9;" value="">
-			</div>
-		</div>
+        @foreach ($result['notes'] as $note)
+            <p class="note">{{ $note }}</p>
+        @endforeach
 
-		<div class="mb-2 mx-2 border border-top-0 border-secondary rounded-bottom" style="min-height: 20px;">
-			<div id="results-wrapper" style="display:none">
+        <h3>Formats</h3>
+        <table class="kv">
+            <tbody>
+                @foreach ([
+                    'standard' => 'Standard (lowercase)',
+                    'uppercase' => 'Uppercase',
+                    'braces' => 'Microsoft GUID (braces)',
+                    'urn' => 'URN',
+                    'hex' => '32 hex digits',
+                    'base64' => 'Base64 (RFC byte order)',
+                    'integer' => '128-bit integer (decimal)',
+                    'guid_bytes_le' => '.NET Guid.ToByteArray() (hex)',
+                    'guid_base64_le' => '.NET Guid bytes (Base64)',
+                ] as $key => $label)
+                    <tr>
+                        <th>{{ $label }}</th>
+                        <td><code>{{ $result['formats'][$key] }}</code></td>
+                        <td class="copy-cell"><button class="btn small" data-copy="{{ $result['formats'][$key] }}" type="button">Copy</button></td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+        <p class="hint">API: <a href="/api/decode/{{ $result['uuid'] }}"><code>/api/decode/{{ $result['uuid'] }}</code></a></p>
+    </section>
+@endif
 
-				<h3 class='ml-3 pt-3 float-left'>Results:</h3>
-				<div class="float-right mr-2 pt-3">
-					<span id="copied-label" class="text-primary mr-2" style="display: none;">copied!</span>
-					<button id="api-copy-button" class="btn btn-outline-primary btn-sm"> <i class="fas fa-code"></i> Copy API Call </button>
-				</div>
-
-				<div id="results"></div>
-
-			</div>
-		</div>
-
-		<div class="row mb-3 mt-5">
-			<div class="col-md-8 order-12 order-md-1">
-				<h3 class="mb-3 font-italic border-bottom">
-					How to decode a UUID
-				</h3>
-				<p>
-					Embedded in every UUID is the <u>version</u> and <u>variant</u> of the UUID.
-					Other information such as the time the UUID was generated can also be extracted in some cases.
-					The tool above extracts this information automatically.
-				</p>
-				<p>
-					The UUID <i>version</i> is represented by the 13th digit of a hexadecimal UUID string ("M" in the diagram below).
-					The <i>variant</i> is represented in the 17th digit ("N" in the diagram below).
-				</p>
-				<figure class="figure border rounded border-secondary p-2">
-					<img src="/img/version_diagram_uuidtools_com.png" class="figure-img img-fluid rounded" alt="diagram showing UUID version and variant bits">
-					<figcaption class="figure-caption">The version and variant are encoding within UUIDs.</figcaption>
-				</figure>
-
-				<p>
-					The version is straight forward to decode.
-					If digit M is 1 then the UUID is version-1, if M is 3 then the UUID is version-3, etc.
-				</p>
-
-				<h4 class="mt-5">Version Digit ("M")</h4>
-				<table class="table text-center table-bordered mb-5">
-					<thead><tr><th>Hex Digit</th><th>UUID Version</th></tr></thead>
-					<tobdy>
-						<tr><td>1</td><td>version-1</td></tr>
-						<tr><td>2</td><td>version-2</tr>
-						<tr><td>3</td><td>version-3</td></tr>
-						<tr><td>4</td><td>version-4</td></tr>
-						<tr><td>5</td><td>version-5</td></tr>
-						<tr><td>6 - f, 0</td><td class="text-muted">version unknown</td></tr>
-					</tobdy>
-				</table>
-
-				<p>
-					The variant is slightly more complicated.
-					To understand how the variant is encoding you must first understand how hexadecimals work.
-				</p>
-				<p>
-					UUIDs are written in hexadecimal which means each digit can be a number from 0 to 9 or a letter from a to f.
-					That is 16 possibilities for each digit. So each hexadecimal digit represents 4 bits.
-					There are 32 hex digits in a UUID times 4 bits gives a total of 128 bits in a UUID.
-				</p>
-				<p>
-					To determine the variant you look at the bits of the 17th hex digit in a UUID.
-					For example, if the 4 binary digits begin "10" then the variant is "DCE 1.1, ISO/IEC 11578:1996".
-					If the binary digits begin "110" then the UUID is a "Microsoft GUID".
-					See the table below for full break down.
-				</p>
-
-				<p>
-					Only the number of leading "1"s matters.
-					The bits after first 0 in the 17th hex digit are considered part of the "contents" of the UUID.
-					"Contents" is a combination of time and machine identifier for version-1 UUIDS,
-					for version-4 UUIDs contents is random,
-					and for version-3 and version-5 the contents is a hash of the namespace and name.
-				</p>
-				<p>
-					<a href="/uuid-versions-explained">Learn more about UUID versions &raquo;</a>
-				</p>
-
-				<h4 class="mt-5">Variant digit ("N")</h4>
-				<table class="table text-center table-bordered">
-					<thead><tr><th>Binary Representation <span class="text-muted">&Dagger;</span></th><th>Hex Digit</th><th>Variant</th></tr></thead>
-					<tobdy>
-						<tr><td class="text-monospace">0xxx</td><td>0 - 7</td><td>reserved (NCS backward compatible)</td>
-						<tr><td class="text-monospace">10xx</td><td>8 - b</td><td>DCE 1.1, ISO/IEC 11578:1996</td>
-						<tr><td class="text-monospace">110x</td><td>c - d</td><td>reserved (Microsoft GUID)</td>
-						<tr><td class="text-monospace">1110</td><td>e</td><td>reserved (future use)</td>
-						<tr><td class="text-monospace">1111</td><td>f</td><td>unknown / invalid. Must end with "0"</td>
-					</tobdy>
-				</table>
-				<p><i class="text-muted small">&Dagger; "x" in the binary representation indicates the bit is not significant for determining the variant.</i></p>
-
-
-			</div>
-
-			<aside class="col-md-4 order-6">
-
-			</aside>
-		</div>
-	</div>
+<div class="content-grid">
+    <article class="prose">
+        <h2>How to decode a UUID</h2>
+        <p>Every RFC 9562 UUID stores its <strong>version</strong> in the 13th hex digit and its <strong>variant</strong> in the top bits of the 17th digit:</p>
+        <pre class="layout">xxxxxxxx-xxxx-<b>M</b>xxx-<b>N</b>xxx-xxxxxxxxxxxx
+             M = version (1-8)   N = variant (8, 9, a, b = RFC 9562)</pre>
+        <table class="data">
+            <thead><tr><th>Version digit</th><th>Meaning</th><th>Contains a timestamp?</th></tr></thead>
+            <tbody>
+                <tr><td>1</td><td>Gregorian time-based</td><td>Yes (100 ns since 1582)</td></tr>
+                <tr><td>2</td><td>DCE Security</td><td>Partial</td></tr>
+                <tr><td>3</td><td>Name-based, MD5</td><td>No</td></tr>
+                <tr><td>4</td><td>Random</td><td>No</td></tr>
+                <tr><td>5</td><td>Name-based, SHA-1</td><td>No</td></tr>
+                <tr><td>6</td><td>Reordered Gregorian time</td><td>Yes (100 ns since 1582)</td></tr>
+                <tr><td>7</td><td>Unix Epoch time</td><td>Yes (ms since 1970)</td></tr>
+                <tr><td>8</td><td>Custom</td><td>Only if your format has one</td></tr>
+            </tbody>
+        </table>
+        <h3>Variant digit</h3>
+        <table class="data">
+            <thead><tr><th>Binary</th><th>Hex digit</th><th>Variant</th></tr></thead>
+            <tbody>
+                <tr><td><code>0xxx</code></td><td>0 - 7</td><td>Reserved, NCS backward compatibility</td></tr>
+                <tr><td><code>10xx</code></td><td>8 - b</td><td>RFC 9562 (the standard variant)</td></tr>
+                <tr><td><code>110x</code></td><td>c - d</td><td>Reserved, Microsoft backward compatibility</td></tr>
+                <tr><td><code>111x</code></td><td>e - f</td><td>Reserved for future definition</td></tr>
+            </tbody>
+        </table>
+        <p>The decoder never throws on odd input: unknown versions, legacy variants and the special nil (<code>00000000-…</code>) and max (<code>ffffffff-…</code>) UUIDs all produce a readable result.</p>
+        <p>Learn more in <a href="/uuid-versions-explained">UUID versions explained</a>.</p>
+    </article>
+    <aside class="side">
+        <div class="card"><h3>Generate</h3>
+            <ul class="plain">
+                @foreach (\App\Uuid\UuidVersion::tabs() as $v)<li><a href="{{ $v->path() }}">{{ $v->longLabel() }} generator</a></li>@endforeach
+            </ul>
+        </div>
+    </aside>
+</div>
 @endsection
-
-
-{{-- ============================================================================== --}}
-{{-- ==                               Page Scripts                               == --}}
-{{-- ============================================================================== --}}
-@push('scripts')
-
-<script>
-	var lastLookup = "";
-
-	$("#decode-form").submit(function(event) {
-		event.preventDefault();
-		if (lastLookup == $('#uuid').val()) return; // No need to lookup again..
-		get_results();
-	});
-
-	function get_results() {
-		lastLookup = $('#uuid').val();
-		url = '/api/decode/' + $('#uuid').val();
-		$("#api-copy-input").val('https://www.uuidtools.com' + url);
-		$.ajax({
-			url: url,
-			success: function(data) {
-				table = $("<table>").addClass('table mb-0 table-bordered table-hover');
-				tbody = $("<tbody>");
-				tbody.append($('<tr>').append("<th>Standard String Format</th><td>" +format_result(data['encode']['STR'])+ "</td>"))
-				tbody.append($('<tr>').append("<th>Single Integer Value</th><td>" +format_result(data['encode']['SIV'])+ "</td>"))
-				tbody.append($('<tr>').append("<th>Version</th><td>" +format_result(data['decode']['version'])+ "</td>"))
-				tbody.append($('<tr>').append("<th>Variant</th><td>" +format_result(data['decode']['variant'])+ "</td>"))
-
-				if (typeof data['decode']['contents'] == "string") {
-					tbody.append($('<tr>').append("<th>Contents</th><td>" + format_result(data['decode']['contents']) + "</td>"))
-				}
-				else
-				{
-					tbody.append($('<tr>').append("<th>Contents - Time</th><td>" + format_result(data['decode']['contents']['time']) + "</td>"))
-					tbody.append($('<tr>').append("<th>Contents - Clock</th><td>" + format_result(data['decode']['contents']['clock']) + "</td>"))
-					tbody.append($('<tr>').append("<th>Contents - Node</th><td>" + format_result(data['decode']['contents']['node']) + "</td>"))
-				}
-
-				table.append(tbody);
-				$('#results').html("");
-				$('#results').append(table);
-				$('#results-wrapper').slideDown();
-
-			}
-		});
-	}
-
-	function format_result(input)
-	{
-		parts = input.split('(');
-		if (parts.length == 1) {
-			return input;
-		}
-		return parts[0] + " <span class='text-muted font-italic'>(" + parts[1] + "</span>";
-	}
-
-	$('#api-copy-button').on('click', function() {
-		$('#copied-label').show().fadeOut('slow');
-		document.getElementById('api-copy-input').select();
-		document.getElementById('api-copy-input').setSelectionRange(0, 99999);
-		document.execCommand("copy");
-	});
-
-	$('#autofill').on('click', function(event) {
-		event.preventDefault();
-		versions = ['v1', 'v4'];
-		version = versions[Math.floor(Math.random() * versions.length)];
-		$.ajax({
-			url: '/api/generate/' + version,
-			success: function(data) {
-				$('#uuid').val(data[0]);
-			}
-		})
-	});
-</script>
-</script>
-<script type="application/ld+json">
-{
-	"@context": "https://schema.org",
-	"@type": "BreadcrumbList",
-	"itemListElement": [{
-		"@type": "ListItem",
-		"position": 1,
-		"name": "UUID Decoder",
-		"item": "https://www.uuidtools.com/decode"
-	}]
-}
-</script>
-@endpush
