@@ -43,7 +43,8 @@ Copy `.env.example` to `.env`. These are the only values that matter:
 | `APP_DEBUG` | `false` | Keep `false` in production |
 | `APP_URL` | `https://www.uuidtools.com` | Used for canonical URLs and the sitemap |
 | `ADSENSE_CLIENT` | existing publisher id | Leave empty to disable Google AdSense |
-| `GOOGLE_ANALYTICS_ID` | empty | GA4 measurement id (`G-XXXXXXX`). Empty disables analytics |
+| `GOOGLE_ANALYTICS_ID` | `G-2SCNGWDT9C` | GA4 measurement id. Unset or empty uses the default; `false` disables the tag |
+| `CLOUDFLARE_ANALYTICS_TOKEN` | empty | Cloudflare Web Analytics beacon token (dashboard: Web Analytics, the site, Manage site, JS snippet). Empty disables the beacon |
 | `API_RATE_LIMIT` | `60` | API requests per minute per IP |
 | `CACHE_STORE` | `file` | Only used by the rate limiter |
 
