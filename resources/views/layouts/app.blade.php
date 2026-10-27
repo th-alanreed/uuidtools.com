@@ -5,6 +5,8 @@
     $description = trim(html_entity_decode($__env->yieldContent('description'), ENT_QUOTES)) ?: 'Free online UUID and GUID generator, decoder and API. All RFC 9562 versions: v1, v3, v4, v5, v6, v7, v8, nil and max.';
     $canonical = trim($__env->yieldContent('canonical')) ?: url()->current();
     $isProd = app()->environment('production');
+    $gaId = config('uuidtools.google_analytics_id');
+    $cfToken = config('uuidtools.cloudflare_analytics_token');
     $asset = fn (string $path) => asset($path).'?v='.(@filemtime(public_path($path)) ?: 1);
 @endphp
 <!doctype html>
@@ -29,6 +31,10 @@
     <link rel="manifest" href="/manifest.json">
     <link rel="stylesheet" href="{{ $asset('css/app.css') }}">
     @stack('head')
+    @if ($isProd && $gaId)
+        <script async src="https://www.googletagmanager.com/gtag/js?id={{ urlencode($gaId) }}"></script>
+        <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config',@json($gaId));</script>
+    @endif
     @if ($isProd && config('uuidtools.adsense_client'))
         <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client={{ config('uuidtools.adsense_client') }}" crossorigin="anonymous"></script>
     @endif
@@ -77,9 +83,8 @@
 
 <script src="{{ $asset('js/uuidtools.js') }}" defer></script>
 @stack('scripts')
-@if ($isProd && config('uuidtools.google_analytics_id'))
-    <script async src="https://www.googletagmanager.com/gtag/js?id={{ config('uuidtools.google_analytics_id') }}"></script>
-    <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','{{ config('uuidtools.google_analytics_id') }}');</script>
+@if ($isProd && $cfToken)
+    <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon="{{ json_encode(['token' => $cfToken]) }}"></script>
 @endif
 </body>
 </html>

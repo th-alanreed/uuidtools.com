@@ -7,7 +7,15 @@ return [
 
     'adsense_client' => env('ADSENSE_CLIENT'),
 
-    'google_analytics_id' => env('GOOGLE_ANALYTICS_ID'),
+    // GA4 measurement id. Unset or empty uses the site's id; "false" disables the tag.
+    'google_analytics_id' => match ($id = env('GOOGLE_ANALYTICS_ID')) {
+        null, '' => 'G-2SCNGWDT9C',
+        false => null,
+        default => $id,
+    },
+
+    // Cloudflare Web Analytics beacon token (the "token" in the dashboard's JS snippet).
+    'cloudflare_analytics_token' => env('CLOUDFLARE_ANALYTICS_TOKEN', ''),
 
     'github_url' => 'https://github.com/th-alanreed/uuidtools.com',
 
